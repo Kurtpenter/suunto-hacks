@@ -1,0 +1,951 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Suunto Vertical Battery Monitor & History</title>
+  <style>
+    :root {
+      --bg: #0b1120;
+      --card: #1e293b;
+      --card-border: #334155;
+      --text: #f8fafc;
+      --muted: #94a3b8;
+      --accent: #38bdf8;
+      --accent-hover: #0284c7;
+      --success: #22c55e;
+      --warn: #eab308;
+      --danger: #ef4444;
+      --card-inner: #0f172a;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    .container {
+      max-width: 800px;
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+      padding-bottom: 8px;
+    }
+    h1 { font-size: 1.5rem; font-weight: 700; }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--card-border);
+      border-radius: 16px;
+      padding: 24px;
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.4);
+    }
+    .header-controls {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .badge {
+      display: inline-block;
+      padding: 4px 12px;
+      border-radius: 9999px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      background: #334155;
+      color: var(--muted);
+    }
+    .badge.connected {
+      background: rgba(34, 197, 94, 0.15);
+      color: var(--success);
+      border: 1px solid rgba(34, 197, 94, 0.3);
+    }
+    button {
+      background: var(--accent);
+      color: #0f172a;
+      border: none;
+      padding: 10px 20px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      border-radius: 10px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      transition: background 0.2s, transform 0.1s;
+    }
+    button:hover { background: var(--accent-hover); }
+    button:active { transform: scale(0.98); }
+    button:disabled { background: #475569; color: #94a3b8; cursor: not-allowed; }
+    button.secondary {
+      background: #334155;
+      color: var(--text);
+    }
+    button.secondary:hover { background: #475569; }
+    button.danger {
+      background: rgba(239, 68, 68, 0.2);
+      color: var(--danger);
+      border: 1px solid rgba(239, 68, 68, 0.3);
+    }
+    button.danger:hover { background: rgba(239, 68, 68, 0.3); }
+
+    /* Current Gauge */
+    .gauge-card {
+      display: flex;
+      align-items: center;
+      justify-content: space-around;
+      gap: 24px;
+      flex-wrap: wrap;
+    }
+    .battery-visual {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+    }
+    .battery-icon {
+      width: 120px;
+      height: 60px;
+      border: 4px solid #64748b;
+      border-radius: 12px;
+      position: relative;
+      padding: 4px;
+      display: flex;
+      align-items: center;
+    }
+    .battery-icon::after {
+      content: '';
+      position: absolute;
+      right: -10px;
+      top: 15px;
+      width: 6px;
+      height: 22px;
+      background: #64748b;
+      border-radius: 0 4px 4px 0;
+    }
+    .battery-fill {
+      height: 100%;
+      width: 0%;
+      background: var(--success);
+      border-radius: 6px;
+      transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1), background 0.3s;
+    }
+    .battery-text {
+      font-size: 2.8rem;
+      font-weight: 800;
+      letter-spacing: -1px;
+    }
+    .stats-summary {
+      display: flex;
+      gap: 24px;
+      text-align: left;
+    }
+    .stat-item {
+      display: flex;
+      flex-direction: column;
+    }
+    .stat-label {
+      font-size: 0.75rem;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .stat-val {
+      font-size: 1.1rem;
+      font-weight: 700;
+      margin-top: 2px;
+    }
+
+    /* Chart section */
+    .chart-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    .chart-title {
+      font-size: 1.1rem;
+      font-weight: 700;
+    }
+    .actions-bar {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .canvas-container {
+      position: relative;
+      width: 100%;
+      height: 260px;
+      background: var(--card-inner);
+      border: 1px solid #1e293b;
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    canvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+    .chart-tooltip {
+      position: absolute;
+      background: rgba(15, 23, 42, 0.95);
+      border: 1px solid var(--accent);
+      border-radius: 8px;
+      padding: 6px 12px;
+      font-size: 0.75rem;
+      color: var(--text);
+      pointer-events: none;
+      display: none;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+      z-index: 10;
+      transform: translate(-50%, -120%);
+      white-space: nowrap;
+    }
+
+    /* Table */
+    .table-container {
+      max-height: 200px;
+      overflow-y: auto;
+      margin-top: 16px;
+      border: 1px solid #1e293b;
+      border-radius: 8px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.85rem;
+      text-align: left;
+    }
+    th, td {
+      padding: 8px 14px;
+      border-bottom: 1px solid #1e293b;
+    }
+    th {
+      background: var(--card-inner);
+      color: var(--muted);
+      font-weight: 600;
+      position: sticky;
+      top: 0;
+    }
+    tr:last-child td { border-bottom: none; }
+
+    /* Collapsible console log */
+    details {
+      background: var(--card);
+      border: 1px solid var(--card-border);
+      border-radius: 12px;
+      padding: 12px 16px;
+    }
+    summary {
+      cursor: pointer;
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--muted);
+      user-select: none;
+    }
+    .log-box {
+      margin-top: 12px;
+      background: var(--card-inner);
+      border-radius: 8px;
+      padding: 12px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 0.75rem;
+      color: var(--muted);
+      height: 110px;
+      overflow-y: auto;
+      border: 1px solid #1e293b;
+    }
+    .log-box p { margin-bottom: 4px; line-height: 1.3; }
+    input[type="file"] { display: none; }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <header>
+      <div>
+        <h1>Suunto Battery History</h1>
+        <p style="color: var(--muted); font-size: 0.85rem;">Suunto Vertical & Movesense Whiteboard BLE</p>
+      </div>
+      <div class="header-controls">
+        <div id="statusBadge" class="badge">Disconnected</div>
+        <button id="connectBtn" onclick="connectWatch()">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m7 7 10 10-5 5V2l5 5L7 17"/></svg>
+          Connect Watch
+        </button>
+      </div>
+    </header>
+
+    <!-- Gauge & Latest Status -->
+    <div class="card gauge-card">
+      <div class="battery-visual">
+        <div class="battery-icon">
+          <div id="batteryFill" class="battery-fill"></div>
+        </div>
+        <div id="batteryText" class="battery-text">--%</div>
+      </div>
+      <div class="stats-summary">
+        <div class="stat-item">
+          <span class="stat-label">Last Reading</span>
+          <span id="statLastTime" class="stat-val">--</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">Min / Max</span>
+          <span id="statMinMax" class="stat-val">-- / --</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">Records</span>
+          <span id="statCount" class="stat-val">0</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Chart Card -->
+    <div class="card">
+      <div class="chart-header">
+        <div class="chart-title">Battery Level Over Time</div>
+        <div class="actions-bar">
+          <button class="secondary" onclick="exportCSV()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Export CSV
+          </button>
+          <button class="secondary" onclick="document.getElementById('csvFileInput').click()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            Import CSV
+          </button>
+          <input type="file" id="csvFileInput" accept=".csv" onchange="handleFileSelect(event)">
+          <button class="danger" onclick="clearHistory()">Clear</button>
+        </div>
+      </div>
+
+      <div class="canvas-container" id="canvasWrapper">
+        <canvas id="batteryCanvas"></canvas>
+        <div id="chartTooltip" class="chart-tooltip"></div>
+      </div>
+
+      <div class="table-container">
+        <table>
+          <thead>
+            <tr>
+              <th>Date & Time</th>
+              <th>Battery Level</th>
+            </tr>
+          </thead>
+          <tbody id="historyTableBody">
+            <tr><td colspan="2" style="text-align:center; color: var(--muted);">No readings recorded yet.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Connection Debug Log -->
+    <details>
+      <summary>Bluetooth Console Log</summary>
+      <div class="log-box" id="logBox">
+        <p>> Ready. Open in Chrome on Mac or Android.</p>
+      </div>
+    </details>
+  </div>
+
+  <script>
+    const STORAGE_KEY = 'suunto_battery_history';
+    const SUUNTO_SERVICE_UUID = '61353090-8231-49cc-b57a-886370740041';
+    const WRITE_CHAR_UUID     = '17816557-5652-417f-909f-3aee61e5fa85';
+    const NOTIFY_CHAR_UUID    = '34802252-7185-4d5d-b431-630e7050e8f0';
+
+    const DELIM = 0x7E;
+    const ESC = 0x7D;
+
+    // 3 static cold-init handshake frames required by the watch
+    const INIT_HEX = [
+      'a5122000000009092016455641100441100400000004010200000000000300000000000000001512b53e',
+      'a50a10000a000180000c2f53797374656d2f4d6f646542eaaa35',
+      'a50a17000b00018000132f4465766963652f53797374656d2f4d6f6465c9fe3b54'
+    ];
+
+    let device, server, writeChar, notifyChar;
+    let rxBuffer = [];
+    let pendingResolve = null;
+
+    function log(msg) {
+      const box = document.getElementById('logBox');
+      const p = document.createElement('p');
+      p.textContent = '> ' + msg;
+      box.appendChild(p);
+      box.scrollTop = box.scrollHeight;
+    }
+
+    /* --- History Management & LocalStorage --- */
+    function getHistory() {
+      try {
+        const data = localStorage.getItem(STORAGE_KEY);
+        return data ? JSON.parse(data) : [];
+      } catch (e) {
+        console.error('Failed reading history:', e);
+        return [];
+      }
+    }
+
+    function saveHistory(list) {
+      list.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
+    }
+
+    function recordReading(level) {
+      const history = getHistory();
+      const now = new Date();
+      // Avoid duplicate log if within 60s and same level
+      if (history.length > 0) {
+        const last = history[history.length - 1];
+        const diffMs = now - new Date(last.timestamp);
+        if (diffMs < 60000 && last.level === level) {
+          updateGaugeUI(level);
+          return;
+        }
+      }
+
+      history.push({
+        timestamp: now.toISOString(),
+        level: Number(level)
+      });
+      saveHistory(history);
+      updateGaugeUI(level);
+      renderAll();
+    }
+
+    function clearHistory() {
+      if (confirm('Are you sure you want to clear all recorded battery history?')) {
+        localStorage.removeItem(STORAGE_KEY);
+        renderAll();
+        log('Battery history cleared.');
+      }
+    }
+
+    /* --- CSV Export / Import --- */
+    function exportCSV() {
+      const history = getHistory();
+      if (history.length === 0) {
+        alert('No battery data to export.');
+        return;
+      }
+      let csv = 'Timestamp,DateTime,BatteryLevel\n';
+      for (const item of history) {
+        const d = new Date(item.timestamp);
+        const dtStr = d.toISOString().replace('T', ' ').substring(0, 19);
+        csv += `"${item.timestamp}","${dtStr}",${item.level}\n`;
+      }
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `suunto_battery_history_${new Date().toISOString().slice(0, 10)}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+      log(`Exported ${history.length} records to CSV.`);
+    }
+
+    function handleFileSelect(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = function(evt) {
+        const content = evt.target.result;
+        const lines = content.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+        if (lines.length < 2) {
+          alert('Invalid CSV file: empty or no data.');
+          return;
+        }
+        const history = getHistory();
+        const existingTimes = new Set(history.map(h => h.timestamp));
+        let added = 0;
+        let skipped = 0;
+
+        for (let i = 1; i < lines.length; i++) {
+          const parts = lines[i].split(',').map(s => s.replace(/^"|"$/g, '').trim());
+          if (parts.length >= 2) {
+            const ts = parts[0];
+            const lvl = parseInt(parts[parts.length - 1], 10);
+            if (!isNaN(Date.parse(ts)) && !isNaN(lvl) && lvl >= 0 && lvl <= 100) {
+              if (!existingTimes.has(ts)) {
+                history.push({ timestamp: ts, level: lvl });
+                existingTimes.add(ts);
+                added++;
+              } else {
+                skipped++;
+              }
+            }
+          }
+        }
+        saveHistory(history);
+        renderAll();
+        if (history.length > 0) {
+          updateGaugeUI(history[history.length - 1].level);
+        }
+        if (added === 0 && skipped > 0) {
+          alert(`No new records added: all ${skipped} entries in this CSV already exist in your history.`);
+          log(`CSV Import: 0 added (${skipped} duplicates already exist).`);
+        } else {
+          alert(`Successfully imported ${added} new record(s)${skipped > 0 ? ` (${skipped} duplicates skipped)` : ''}.`);
+          log(`CSV Import: ${added} added, ${skipped} skipped.`);
+        }
+      };
+      reader.readAsText(file);
+      e.target.value = '';
+    }
+
+    /* --- UI & Gauge --- */
+    function updateGaugeUI(percent) {
+      document.getElementById('batteryText').textContent = percent + '%';
+      const fill = document.getElementById('batteryFill');
+      fill.style.width = percent + '%';
+      if (percent <= 20) {
+        fill.style.background = 'var(--danger)';
+      } else if (percent <= 40) {
+        fill.style.background = 'var(--warn)';
+      } else {
+        fill.style.background = 'var(--success)';
+      }
+    }
+
+    function renderAll() {
+      const history = getHistory();
+      // Stats summary
+      document.getElementById('statCount').textContent = history.length;
+      if (history.length > 0) {
+        const levels = history.map(h => h.level);
+        const minL = Math.min(...levels);
+        const maxL = Math.max(...levels);
+        document.getElementById('statMinMax').textContent = `${minL}% / ${maxL}%`;
+        const lastDate = new Date(history[history.length - 1].timestamp);
+        document.getElementById('statLastTime').textContent = lastDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        updateGaugeUI(history[history.length - 1].level);
+      } else {
+        document.getElementById('statMinMax').textContent = '-- / --';
+        document.getElementById('statLastTime').textContent = '--';
+        updateGaugeUI(0);
+        document.getElementById('batteryText').textContent = '--%';
+      }
+
+      // Render table (newest first)
+      const tbody = document.getElementById('historyTableBody');
+      tbody.innerHTML = '';
+      if (history.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="2" style="text-align:center; color: var(--muted);">No readings recorded yet.</td></tr>';
+      } else {
+        const rev = [...history].reverse();
+        for (const item of rev.slice(0, 50)) {
+          const tr = document.createElement('tr');
+          const d = new Date(item.timestamp);
+          tr.innerHTML = `
+            <td>${d.toLocaleString()}</td>
+            <td><strong style="color: ${item.level <= 20 ? 'var(--danger)' : item.level <= 40 ? 'var(--warn)' : 'var(--success)'};">${item.level}%</strong></td>
+          `;
+          tbody.appendChild(tr);
+        }
+      }
+
+      renderChart();
+    }
+
+    /* --- Interactive Canvas Graph --- */
+    let chartPoints = [];
+
+    function renderChart() {
+      const canvas = document.getElementById('batteryCanvas');
+      const container = document.getElementById('canvasWrapper');
+      const dpr = window.devicePixelRatio || 1;
+      const width = container.clientWidth;
+      const height = container.clientHeight;
+
+      canvas.width = width * dpr;
+      canvas.height = height * dpr;
+      const ctx = canvas.getContext('2d');
+      ctx.scale(dpr, dpr);
+
+      chartPoints = [];
+      const history = getHistory();
+
+      if (history.length === 0) {
+        ctx.fillStyle = '#64748b';
+        ctx.font = '14px -apple-system, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('No battery records yet. Connect your watch to begin logging.', width / 2, height / 2);
+        return;
+      }
+
+      const paddingLeft = 45;
+      const paddingRight = 20;
+      const paddingTop = 20;
+      const paddingBottom = 35;
+      const plotWidth = width - paddingLeft - paddingRight;
+      const plotHeight = height - paddingTop - paddingBottom;
+
+      // Draw horizontal grid lines (0%, 25%, 50%, 75%, 100%)
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = '#1e293b';
+      ctx.fillStyle = '#64748b';
+      ctx.font = '11px sans-serif';
+      ctx.textAlign = 'right';
+
+      [0, 25, 50, 75, 100].forEach(val => {
+        const y = paddingTop + plotHeight - (val / 100) * plotHeight;
+        ctx.beginPath();
+        ctx.moveTo(paddingLeft, y);
+        ctx.lineTo(width - paddingRight, y);
+        ctx.stroke();
+        ctx.fillText(val + '%', paddingLeft - 8, y + 4);
+      });
+
+      // Calculate coordinates
+      const times = history.map(h => new Date(h.timestamp).getTime());
+      const minTime = times[0];
+      const maxTime = times.length > 1 ? times[times.length - 1] : minTime + 3600000;
+      const timeSpan = maxTime - minTime || 1;
+
+      for (let i = 0; i < history.length; i++) {
+        const t = times[i];
+        const lvl = history[i].level;
+        const x = paddingLeft + ((t - minTime) / timeSpan) * plotWidth;
+        const y = paddingTop + plotHeight - (lvl / 100) * plotHeight;
+        chartPoints.push({ x, y, item: history[i] });
+      }
+
+      // Draw line and gradient fill
+      if (chartPoints.length > 0) {
+        // Gradient fill
+        const gradient = ctx.createLinearGradient(0, paddingTop, 0, paddingTop + plotHeight);
+        gradient.addColorStop(0, 'rgba(56, 189, 248, 0.35)');
+        gradient.addColorStop(1, 'rgba(56, 189, 248, 0.0)');
+
+        ctx.beginPath();
+        ctx.moveTo(chartPoints[0].x, paddingTop + plotHeight);
+        for (let i = 0; i < chartPoints.length; i++) {
+          ctx.lineTo(chartPoints[i].x, chartPoints[i].y);
+        }
+        ctx.lineTo(chartPoints[chartPoints.length - 1].x, paddingTop + plotHeight);
+        ctx.closePath();
+        ctx.fillStyle = gradient;
+        ctx.fill();
+
+        // Stroke line
+        ctx.beginPath();
+        ctx.moveTo(chartPoints[0].x, chartPoints[0].y);
+        for (let i = 1; i < chartPoints.length; i++) {
+          ctx.lineTo(chartPoints[i].x, chartPoints[i].y);
+        }
+        ctx.strokeStyle = '#38bdf8';
+        ctx.lineWidth = 2.5;
+        ctx.stroke();
+
+        // Data point dots
+        for (const pt of chartPoints) {
+          ctx.beginPath();
+          ctx.arc(pt.x, pt.y, 4, 0, Math.PI * 2);
+          ctx.fillStyle = '#0f172a';
+          ctx.fill();
+          ctx.lineWidth = 2;
+          ctx.strokeStyle = '#38bdf8';
+          ctx.stroke();
+        }
+      }
+
+      // Draw Date labels on X-axis
+      ctx.fillStyle = '#64748b';
+      ctx.textAlign = 'center';
+      const xTicks = 4;
+      for (let k = 0; k <= xTicks; k++) {
+        const curT = minTime + (k / xTicks) * timeSpan;
+        const x = paddingLeft + (k / xTicks) * plotWidth;
+        const d = new Date(curT);
+        const label = d.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        ctx.fillText(label, x, height - 10);
+      }
+    }
+
+    // Chart Tooltip Hover
+    const canvasWrapper = document.getElementById('canvasWrapper');
+    const tooltip = document.getElementById('chartTooltip');
+
+    canvasWrapper.addEventListener('mousemove', (e) => {
+      const rect = canvasWrapper.getBoundingClientRect();
+      const mouseX = e.clientX - rect.left;
+      const mouseY = e.clientY - rect.top;
+
+      let closest = null;
+      let minDistance = 25;
+
+      for (const pt of chartPoints) {
+        const dist = Math.hypot(pt.x - mouseX, pt.y - mouseY);
+        if (dist < minDistance) {
+          minDistance = dist;
+          closest = pt;
+        }
+      }
+
+      if (closest) {
+        const d = new Date(closest.item.timestamp);
+        tooltip.style.display = 'block';
+        tooltip.style.left = closest.x + 'px';
+        tooltip.style.top = closest.y + 'px';
+        tooltip.innerHTML = `<strong>${closest.item.level}%</strong> • ${d.toLocaleString()}`;
+      } else {
+        tooltip.style.display = 'none';
+      }
+    });
+
+    canvasWrapper.addEventListener('mouseleave', () => {
+      tooltip.style.display = 'none';
+    });
+
+    window.addEventListener('resize', renderChart);
+
+    /* --- Bluetooth & Protocol Helpers --- */
+    const crcTable = (() => {
+      let c;
+      const table = [];
+      for (let n = 0; n < 256; n++) {
+        c = n;
+        for (let k = 0; k < 8; k++) {
+          c = ((c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1));
+        }
+        table[n] = c;
+      }
+      return table;
+    })();
+
+    function crc32(bytes) {
+      let crc = 0 ^ (-1);
+      for (let i = 0; i < bytes.length; i++) {
+        crc = (crc >>> 8) ^ crcTable[(crc ^ bytes[i]) & 0xFF];
+      }
+      return (crc ^ (-1)) >>> 0;
+    }
+
+    function escapeBytes(bytes) {
+      const out = [];
+      for (const b of bytes) {
+        if (b === DELIM) {
+          out.push(ESC, DELIM ^ 0x20);
+        } else if (b === ESC) {
+          out.push(ESC, ESC ^ 0x20);
+        } else {
+          out.push(b);
+        }
+      }
+      return out;
+    }
+
+    function unescapeBytes(bytes) {
+      const out = [];
+      for (let i = 0; i < bytes.length; i++) {
+        if (bytes[i] === ESC) {
+          i++;
+          if (i < bytes.length) out.push(bytes[i] ^ 0x20);
+        } else {
+          out.push(bytes[i]);
+        }
+      }
+      return out;
+    }
+
+    function hexToBytes(hex) {
+      const bytes = [];
+      for (let c = 0; c < hex.length; c += 2) {
+        bytes.push(parseInt(hex.substr(c, 2), 16));
+      }
+      return bytes;
+    }
+
+    function wrapFrameWithCrc(rawWithCrc) {
+      return new Uint8Array([DELIM, ...escapeBytes(rawWithCrc), DELIM]);
+    }
+
+    function wrapFrame(raw) {
+      const crc = crc32(raw);
+      const withCrc = [...raw, crc & 0xff, (crc >> 8) & 0xff, (crc >> 16) & 0xff, (crc >> 24) & 0xff];
+      return wrapFrameWithCrc(withCrc);
+    }
+
+    function buildRegisterFrame(path, reqId) {
+      const pathBytes = Array.from(new TextEncoder().encode(path));
+      const body = [0x01, 0x80, 0x00, pathBytes.length, ...pathBytes];
+      const header = [0xA5, 0x0A, body.length & 0xff, (body.length >> 8) & 0xff, reqId & 0xff, (reqId >> 8) & 0xff];
+      return wrapFrame([...header, ...body]);
+    }
+
+    function buildSubscribeFrame(H, L, reqId) {
+      const body = [0xF1, H, L, 0x01, 0x80, 0x00, 0x00];
+      const header = [0xA5, 0x10, body.length & 0xff, (body.length >> 8) & 0xff, reqId & 0xff, (reqId >> 8) & 0xff];
+      return wrapFrame([...header, ...body]);
+    }
+
+    function onNotification(event) {
+      const chunk = new Uint8Array(event.target.value.buffer);
+      for (let b of chunk) rxBuffer.push(b);
+
+      while (rxBuffer.includes(DELIM)) {
+        const first = rxBuffer.indexOf(DELIM);
+        const rest = rxBuffer.slice(first + 1);
+        if (!rest.includes(DELIM)) break;
+
+        const second = rest.indexOf(DELIM);
+        const bodyEsc = rest.slice(0, second);
+        rxBuffer = rest.slice(second + 1);
+
+        if (bodyEsc.length > 0) {
+          const unesc = unescapeBytes(bodyEsc);
+          if (unesc.length >= 5 && unesc[0] === 0xA5) {
+            handleFrame(unesc);
+          }
+        }
+      }
+    }
+
+    function handleFrame(f) {
+      const msgType = f[1];
+      if (pendingResolve) {
+        pendingResolve(f);
+        pendingResolve = null;
+      }
+
+      // Check live async event (0x01)
+      if (msgType === 0x01) {
+        const val = f[f.length - 5];
+        if (typeof val === 'number') {
+          log('Live battery update: ' + val + '%');
+          recordReading(val);
+        }
+      }
+    }
+
+    async function sendPkt(pktBytes, timeoutMs = 6000) {
+      const CHUNK_SIZE = 20;
+      let replyPromise = new Promise((resolve, reject) => {
+        const timer = setTimeout(() => {
+          pendingResolve = null;
+          reject(new Error('Timeout waiting for reply'));
+        }, timeoutMs);
+        pendingResolve = (frame) => {
+          clearTimeout(timer);
+          resolve(frame);
+        };
+      });
+
+      for (let k = 0; k < pktBytes.length; k += CHUNK_SIZE) {
+        const chunk = pktBytes.slice(k, k + CHUNK_SIZE);
+        await writeChar.writeValueWithoutResponse(chunk);
+        await new Promise(r => setTimeout(r, 8)); // 8ms pacing
+      }
+
+      const reply = await replyPromise;
+      await new Promise(r => setTimeout(r, 30));
+      return reply;
+    }
+
+    async function connectWatch() {
+      if (!navigator.bluetooth) {
+        alert('Web Bluetooth is not supported or enabled in this browser. Please use Google Chrome.');
+        return;
+      }
+
+      try {
+        log('Requesting Bluetooth device...');
+        device = await navigator.bluetooth.requestDevice({
+          filters: [{ namePrefix: 'Suunto', services: [SUUNTO_SERVICE_UUID] }],
+          optionalServices: [SUUNTO_SERVICE_UUID]
+        });
+
+        log('Connecting to ' + device.name + '...');
+        document.getElementById('connectBtn').disabled = true;
+
+        let connectAttempts = 0;
+        const maxAttempts = 3;
+        while (connectAttempts < maxAttempts) {
+          try {
+            connectAttempts++;
+            server = await device.gatt.connect();
+            break;
+          } catch (connErr) {
+            if (connectAttempts < maxAttempts) {
+              log(`GATT connection attempt ${connectAttempts} failed (${connErr.message}), retrying...`);
+              await new Promise(r => setTimeout(r, 1000));
+            } else {
+              throw connErr;
+            }
+          }
+        }
+        document.getElementById('statusBadge').textContent = 'Connected: ' + device.name;
+        document.getElementById('statusBadge').classList.add('connected');
+
+        log('Discovering Suunto Whiteboard Service...');
+        const service = await server.getPrimaryService(SUUNTO_SERVICE_UUID);
+
+        log('Getting Characteristics...');
+        writeChar = await service.getCharacteristic(WRITE_CHAR_UUID);
+        notifyChar = await service.getCharacteristic(NOTIFY_CHAR_UUID);
+
+        await notifyChar.startNotifications();
+        notifyChar.addEventListener('characteristicvaluechanged', onNotification);
+        log('Notifications enabled.');
+
+        // Step 0: Send cold-init handshake frames
+        log('Initializing Whiteboard session (handshake)...');
+        for (let i = 0; i < INIT_HEX.length; i++) {
+          const initPkt = wrapFrameWithCrc(hexToBytes(INIT_HEX[i]));
+          const rep = await sendPkt(initPkt, 5000);
+          log(`Handshake frame ${i + 1} acknowledged (type 0x${rep[1].toString(16)}).`);
+        }
+
+        // Step 1: Register /Device/Power/Batterylevel
+        log('Registering /Device/Power/Batterylevel...');
+        const regPkt = buildRegisterFrame('/Device/Power/Batterylevel', 200);
+        const regReply = await sendPkt(regPkt, 6000);
+
+        if (regReply[1] !== 0x02) throw new Error('Bad register response: 0x' + regReply[1].toString(16));
+
+        const body = regReply.slice(6, regReply.length - 4);
+        const H = body[1];
+        const L = body[2];
+        log(`Registered handle: H=0x${H.toString(16)}, L=0x${L.toString(16)}`);
+
+        // Step 2: Subscribe to get battery value
+        log('Subscribing to Battery Level...');
+        const subPkt = buildSubscribeFrame(H, L, 201);
+        const subReply = await sendPkt(subPkt, 6000);
+
+        if (subReply[1] === 0x08) {
+          const subBody = subReply.slice(6, subReply.length - 4);
+          const battery = subBody[10];
+          log(`SUCCESS! Battery Level: ${battery}%`);
+          recordReading(battery);
+        } else {
+          log('Unexpected reply type: 0x' + subReply[1].toString(16));
+        }
+
+      } catch (err) {
+        log('Error: ' + err.message);
+        console.error(err);
+      } finally {
+        document.getElementById('connectBtn').disabled = false;
+      }
+    }
+
+    // Initial render on page load
+    document.addEventListener('DOMContentLoaded', () => {
+      renderAll();
+    });
+  </script>
+</body>
+</html>
